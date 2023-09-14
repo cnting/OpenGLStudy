@@ -3,6 +3,8 @@
 #include "android/native_window.h"
 #include "android/native_window_jni.h"
 #include "mylog.h"
+#include "Shader.h"
+#include "FragmentShader.h"
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 
@@ -18,38 +20,6 @@
  * 另外同一个EGLContext也可以被不同线程共享，但是不能同时被不同线程绑定。
  */
 
-GLint initSharder(const char *source, GLint type) {
-    //创建着色器对象，type表示着色器类型。返回具有引用作用的整数
-    GLint sh = glCreateShader(type);
-    if (sh == 0) {
-        LOGE("glCreateShader %d failed", type);
-        return 0;
-    }
-    //加载着色器代码source
-    glShaderSource(sh,
-                   1, //shader数量
-                   &source,
-                   0 //代码长度，传0表示读到字符串结尾
-    );
-    //编译着色器对象
-    glCompileShader(sh);
-
-    GLint status;
-    glGetShaderiv(sh, GL_COMPILE_STATUS, &status);
-    if (status == 0) {
-        LOGE("glCompileShader %d failed", type);
-        LOGE("source %s", source);
-        auto *infoLog = new GLchar[512];
-        GLsizei length;
-        glGetShaderInfoLog(sh, 512, &length, infoLog);
-
-        LOGE("ERROR::SHADER::VERTEX::COMPILATION_FAILED %s", infoLog);
-        return 0;
-    }
-
-    LOGE("glCompileShader %d success", type);
-    return sh;
-}
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -107,37 +77,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
     /******** EGL配置end ******/
 
     /******** 加载着色器程序 start******/
-    ////着色器对象：表示一段具体的着色器代码的抽象
-    ////着色器程序：表示整个图形渲染管线的着色器程序集合
-
-    //创建和编译顶点着色器、片段着色器对象
-    GLint vsh = initShader(vertexSimpleShape, GL_VERTEX_SHADER);
-    GLint fsh = initShader(fragSimpleShape, GL_FRAGMENT_SHADER);
-
-    //创建着色器程序对象
-    GLint program = glCreateProgram();
-    if (program == 0) {
-        LOGE("glCreateProgram failed");
-        return;
-    }
-    //将着色器对象关联到着色器程序对象上
-    glAttachShader(program, vsh);
-    glAttachShader(program, fsh);
-
-    //链接着色器程序
-    glLinkProgram(program);
-
-    //打印出链接异常信息
-    GLint status = 0;
-    glGetProgramiv(program, GL_LINK_STATUS, &status);
-    if (status == 0) {
-        LOGE("glLinkProgram failed");
-        return;
-    }
-    LOGE("glLinkProgram success");
-
-    //使用着色器程序
-    glUseProgram(program);
+    Shader shader(vertexSimpleShape, fragSimpleShape);
+    shader.use();
     /******** 加载着色器程序 end******/
 
     /******** 将数据传入图形渲染管线 start******/
@@ -148,7 +89,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
             0.0f, 0.8f, 0.0f,
     };
     //指定接受三角形坐标的变量名
-    GLuint apos = static_cast<GLuint>(glGetAttribLocation(program, "aPosition"));
+    GLuint apos = static_cast<GLuint>(glGetAttribLocation(shader.program, "aPosition"));
 
     //告诉OpenGL如何解析传入的顶点属性数组
     //index：表示着色器中要接收数据的变量的引用（被in修饰的变量）
@@ -175,9 +116,10 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
     //第一个参数是图元类型，第二个参数是从传入的顶点属性数组的第几个元素开始绘制，第三个参数表示绘制多少个顶点属性数组元素。
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 3);
 
-    //窗口显示，交换双缓冲区
+    //绘制指令处理完成，窗口显示，交换前后缓冲区
     eglSwapBuffers(display, winSurface);
     /******** 将图像渲染到屏幕 end******/
 
+    shader.release();
 
 }
