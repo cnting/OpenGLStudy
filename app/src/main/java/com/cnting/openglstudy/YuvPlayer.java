@@ -58,7 +58,10 @@ public class YuvPlayer extends GLSurfaceView implements Runnable {
 //        drawTriangle(getHolder().getSurface());
 //        drawTriangleUniform(getHolder().getSurface());
 //        drawTriangleWithColor(getHolder().getSurface());
-        drawTriangleWithBufferObj(getHolder().getSurface());
+//        drawTriangleWithVBO(getHolder().getSurface());
+//        drawTriangleWithEBO(getHolder().getSurface());
+//        drawTriangleWithVAO(getHolder().getSurface());
+        drawTriangleWithVAOAndVBOAndEBO(getHolder().getSurface());
 //        drawSquare(getHolder().getSurface());
     }
 
@@ -89,9 +92,24 @@ public class YuvPlayer extends GLSurfaceView implements Runnable {
     private native void drawTriangleWithColor(Surface surface);
 
     /**
-     * 画三角形，使用BufferObject
+     * 画三角形，使用VBO
      */
-    private native void drawTriangleWithBufferObj(Surface surface);
+    private native void drawTriangleWithVBO(Surface surface);
+
+    /**
+     * 画三角形，使用EBO
+     */
+    private native void drawTriangleWithEBO(Surface surface);
+
+    /**
+     * 画三角形，使用VAO
+     */
+    private native void drawTriangleWithVAO(Surface surface);
+
+    /**
+     * 画三角形，使用VAO、VBO、EBO
+     */
+    private native void drawTriangleWithVAOAndVBOAndEBO(Surface surface);
 
     /**
      * 画正方形

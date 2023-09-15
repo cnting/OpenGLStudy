@@ -369,10 +369,13 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithColor(JNIEnv *env, jobject
 
     shader.release();
 }
+/**
+ * 使用VBO
+ */
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithBufferObj(JNIEnv *env, jobject thiz,
-                                                                jobject surface) {
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVBO(JNIEnv *env, jobject thiz,
+                                                          jobject surface) {
     EGLDisplay display;
     EGLSurface winSurface;
     if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
@@ -398,19 +401,19 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithBufferObj(JNIEnv *env, job
     //定义vbo的id数组，因为可能需要创建多个vbo
     unsigned int VBOs[1];
     //创建vbo，将创建好的vbo的id存放到VBOs数组中
-    glGenBuffers(1,VBOs);
+    glGenBuffers(1, VBOs);
     //绑定vbo缓冲到上下文
-    glBindBuffer(GL_ARRAY_BUFFER,VBOs[0]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBOs[0]);
     //将顶点数据存入到vbo缓冲区
     //参数target:具体的Buffer Object种类
     //参数size:传入的数据长度
     //参数data:具体的数据指针
     //参数usage:数据的访问模式，常用的是指定修改频率模式，告诉OpenGL我们对数据的修改频率。
     //访问频率模式有：STREAM(几乎每次访问都被修改)、STATIC(只会修改一次)、DYNAMIC(数据会被多次修改)
-    glBufferData(GL_ARRAY_BUFFER,sizeof(triangleVer),triangleVer,GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(triangleVer), triangleVer, GL_STATIC_DRAW);
     //指定如何解析顶点属性数组，注意这里最后一个参数传的不是原数组地址，而是在vbo缓冲区中的相对地址
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)(3*4));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void *) 0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void *) (3 * 4));
     //打开着色器中layout为0的输入变量
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
@@ -424,9 +427,225 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithBufferObj(JNIEnv *env, job
     eglSwapBuffers(display, winSurface);
 
     //解绑VBO
-    glBindBuffer(GL_ARRAY_BUFFER,0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
     //删除VBO，即清空缓冲区
-    glDeleteBuffers(1,VBOs);
+    glDeleteBuffers(1, VBOs);
+
+    shader.release();
+}
+/**
+ * 使用EBO
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithEBO(JNIEnv *env, jobject thiz,
+                                                          jobject surface) {
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+
+    Shader shader(vertexShaderWithColor, fragmentShaderWithColor);
+    shader.use();
+
+    float vertices[] = {
+            0.5f, 0.5f, 0.0f,   // 右上角
+            1.0, 0.0, 0.0,//右上角颜色
+
+            0.5f, -0.5f, 0.0f,  // 右下角
+            0.0, 0.0, 1.0,//右下角颜色
+
+            -0.5f, -0.5f, 0.0f, // 左下角
+            0.0, 1.0, 0.0,//左下角颜色
+
+            -0.5f, 0.5f, 0.0f,   // 左上角
+            0.5, 0.5, 0.5,//左上角颜色
+    };
+    unsigned int indices[] = {
+            0, 1, 3, // 第一个三角形
+            1, 2, 3  // 第二个三角形
+    };
+
+    ////EBO缓存的是顶点的索引
+    unsigned int EBO;
+    //创建EBO缓冲对象
+    glGenBuffers(1, &EBO);
+    //绑定EBO缓冲对象
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    //给EBO缓冲对象传入索引数据
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    //解析顶点属性数据
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, vertices);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, vertices + 3);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    //通过顶点索引绘制图元，注意这里已经绑定了EBO，所以最后一个参数传入的是数据在EBO中内存中的起始地址偏移量
+    //第二个参数：表示要绘制多少个顶点
+    //第三个参数：顶点索引的类型，必须是GL_UNSIGNED_BYTE, GL_UNSIGNED_SHORT, or GL_UNSIGNED_INT其中一个种。
+    //第四个参数：索引数组的指针
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void *) 0);
+    eglSwapBuffers(display, winSurface);
+
+    //解绑EBO
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glDeleteBuffers(1, &EBO);
+
+    shader.release();
+}
+/**
+ * 使用VAO缓存VBO的顶点状态，画第一个三角形
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAO(JNIEnv *env, jobject thiz,
+                                                          jobject surface) {
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+
+    Shader shader(vertexShaderWithColor, fragmentShaderWithColor);
+    shader.use();
+
+    static float triangleVer[] = {
+            0.0f, 0.8f, 0.0f,//顶点
+            1.0, 0.0, 0.0,//颜色
+
+            0.8f, 0.8f, 0.0f,//顶点
+            0.0, 1.0, 0.0,//颜色
+
+            0.0f, 0.0f, 0.0f,//顶点
+            0.0, 0.0, 1.0,//颜色
+    };
+    static float triangleVer1[] = {
+            0.0f, -0.8f, 0.0f,//顶点
+            1.0, 0.0, 0.0,//颜色
+
+            -0.8f, -0.8f, 0.0f,//顶点
+            0.0, 1.0, 0.0,//颜色
+
+            0.0f, 0.0f, 0.0f,//顶点
+            0.0, 0.0, 1.0,//颜色
+    };
+
+    unsigned int VBOs[2];
+    unsigned int VAOs[2];
+
+    //创建2个VAO
+    glGenVertexArrays(2, VAOs);
+    glGenBuffers(2, VBOs);
+
+    //绑定第一个VAO，从此在解绑VAO之前的所有对VBOs[0]的操作都会记录在VAO内部
+    glBindVertexArray(VAOs[0]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBOs[0]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(triangleVer), triangleVer, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void *) 0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void *) (3 * 4));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    //解绑第一个VAO
+    glBindVertexArray(0);
+
+
+    //绑定第二个VAO
+    glBindVertexArray(VAOs[1]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBOs[1]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(triangleVer1), triangleVer1, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void *) 0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void *) (3 * 4));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    //解绑第二个VAO
+    glBindVertexArray(0);
+
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    //绑定第一个VAO
+    glBindVertexArray(VAOs[0]);
+    //画第一个三角形
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+
+    eglSwapBuffers(display, winSurface);
+
+    glDeleteBuffers(1, VBOs);
+    glDeleteVertexArrays(2, VAOs);
+    shader.release();
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAOAndVBOAndEBO(JNIEnv *env, jobject thiz,
+                                                                      jobject surface) {
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+
+    Shader shader(vertexShaderWithColor, fragmentShaderWithColor);
+    shader.use();
+
+    float vertices[] = {
+            0.5f, 0.5f, 0.0f,   // 右上角
+            1.0, 0.0, 0.0,//右上角颜色
+
+            0.5f, -0.5f, 0.0f,  // 右下角
+            0.0, 0.0, 1.0,//右下角颜色
+
+            -0.5f, -0.5f, 0.0f, // 左下角
+            0.0, 1.0, 0.0,//左下角颜色
+
+            -0.5f, 0.5f, 0.0f,   // 左上角
+            0.5, 0.5, 0.5,//左上角颜色
+    };
+    unsigned int indices[] = {
+            0, 1, 3, // 第一个三角形
+            1, 2, 3  // 第二个三角形
+    };
+
+    unsigned int VAO;
+    unsigned int VBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+
+    //依次绑定VAO、VBO、EBO，顺序不能错
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    unsigned int EBO;
+    glGenBuffers(1, &EBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, vertices);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, vertices + 3);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    //解绑顺序和绑定要相反
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    //绑定VAO，状态已经被缓存，不用在绑定VBO和EBO
+    glBindVertexArray(VAO);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void *) 0);
+    eglSwapBuffers(display, winSurface);
+    glBindVertexArray(0);
+
+    glDeleteBuffers(1, &EBO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteVertexArrays(1, &VAO);
 
     shader.release();
 }
