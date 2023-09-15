@@ -20,22 +20,18 @@
  * 另外同一个EGLContext也可以被不同线程共享，但是不能同时被不同线程绑定。
  */
 
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jobject surface) {
-    /******** EGL配置start ********/
+int eglConfig(JNIEnv *env, jobject surface, EGLDisplay *display, EGLSurface *winSurface) {
     //1.获取原始窗口
     ANativeWindow *nwin = ANativeWindow_fromSurface(env, surface);
-    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (display == EGL_NO_DISPLAY) {
+    *display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (*display == EGL_NO_DISPLAY) {
         LOGE("egl display failed");
-        return;
+        return EGL_FALSE;
     }
     //2.初始化egl Display的连接，后两个参数是指针，分别用来返回EGL主次版本号
-    if (EGL_TRUE != eglInitialize(display, 0, 0)) {
+    if (EGL_TRUE != eglInitialize(*display, 0, 0)) {
         LOGE("eglInitialize failed");
-        return;
+        return EGL_FALSE;
     }
     //返回的EGL帧缓存配置
     EGLConfig eglConfig;
@@ -50,46 +46,69 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
             EGL_NONE
     };
     //返回一个和 期望的EGL帧缓存配置列表 匹配的EGL帧缓存配置列表，存储在eglConfig中
-    if (EGL_TRUE != eglChooseConfig(display, configSpec, &eglConfig, 1, &configNum)) {
+    if (EGL_TRUE != eglChooseConfig(*display, configSpec, &eglConfig, 1, &configNum)) {
         LOGE("eglChooseConfig failed");
-        return;
+        return EGL_FALSE;
     }
     //创建EGLSurface，最后一个参数为属性信息，0表示不需要属性
-    EGLSurface winSurface = eglCreateWindowSurface(display, eglConfig, nwin, 0);
-    if (winSurface == EGL_NO_SURFACE) {
+    *winSurface = eglCreateWindowSurface(*display, eglConfig, nwin, 0);
+    if (*winSurface == EGL_NO_SURFACE) {
         LOGE("eglCreateWindowSurface failed");
-        return;
+        return EGL_FALSE;
     }
     //渲染上下文EGLContext关联的帧缓冲配置列表，EGL_CONTEXT_CLIENT_VERSION表示这里是配置EGLContext的版本
     const EGLint ctxAttr[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
 
     //通过Display和上面获取到的的EGL帧缓存配置列表创建一个EGLContext， EGL_NO_CONTEXT表示不需要多个设备共享上下文
-    EGLContext context = eglCreateContext(display, eglConfig, EGL_NO_CONTEXT, ctxAttr);
+    EGLContext context = eglCreateContext(*display, eglConfig, EGL_NO_CONTEXT, ctxAttr);
     if (context == EGL_NO_CONTEXT) {
         LOGE("eglCreateContext failed");
-        return;
+        return EGL_FALSE;
     }
     //将EGLContext和当前线程以及draw和read的EGLSurface关联，关联后，当前线程就成为了OpenGL es的渲染线程
-    if (EGL_TRUE != eglMakeCurrent(display, winSurface, winSurface, context)) {
+    if (EGL_TRUE != eglMakeCurrent(*display, *winSurface, *winSurface, context)) {
         LOGE("eglMakeCurrent failed");
+        return EGL_FALSE;
+    }
+
+    return EGL_TRUE;
+}
+
+/**
+ * 画三角形
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jobject surface) {
+    /******** EGL配置start ********/
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
         return;
     }
     /******** EGL配置end ******/
 
     /******** 加载着色器程序 start******/
-    Shader shader(vertexSimpleShape, fragSimpleShape);
+    Shader shader(vertexShader, fragmentShader);
     shader.use();
     /******** 加载着色器程序 end******/
 
     /******** 将数据传入图形渲染管线 start******/
-    //定义顶点属性数组
+    //三个点
     static float triangleVer[] = {
             0.8f, -0.8f, 0.0f,
             -0.8f, -0.8f, 0.0f,
             0.0f, 0.8f, 0.0f,
     };
-    //指定接受三角形坐标的变量名
-    GLuint apos = static_cast<GLuint>(glGetAttribLocation(shader.program, "aPosition"));
+    //六个点
+//    static float triangleVer[] = {
+//            0.8f, 0.8f, 0.0f,
+//            0.0f, 0.8f, 0.0f,
+//            0.4f, 0.4f, 0.0f,
+//            -0.8f, 0.5f, 0.0f,
+//            -0.4f, 0.8f, 0.0f,
+//            -0.8f, 0.8f, 0.0f,
+//    };
 
     //告诉OpenGL如何解析传入的顶点属性数组
     //index：表示着色器中要接收数据的变量的引用（被in修饰的变量）
@@ -97,9 +116,9 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
     //type：每个数组元素的格式是什么
     //normalized：是否归一化，即是否需要将数据范围映射到-1到1区间
     //stride：步长，表示前一个顶点属性的起始位置到下一个顶点属性的起始位置在数组中有多少字节，如果传0，表示顶点属性数据是紧密挨着的。具体看这里：https://juejin.cn/post/7134356782452834334#comment
-    glVertexAttribPointer(apos, 3, GL_FLOAT, GL_FALSE, 0, triangleVer);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, triangleVer);
     //打开着色器中的apos这个变量
-    glEnableVertexAttribArray(apos);
+    glEnableVertexAttribArray(0);
     /******** 将数据传入图形渲染管线 end******/
 
     /******** 将图像渲染到屏幕 start******/
@@ -114,7 +133,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
 
     //绘制三角形的指令。是真正启动整个图形渲染管线工作的按钮
     //第一个参数是图元类型，第二个参数是从传入的顶点属性数组的第几个元素开始绘制，第三个参数表示绘制多少个顶点属性数组元素。
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 3);
+    int count = sizeof(triangleVer) / sizeof(triangleVer[0]);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, count);
 
     //绘制指令处理完成，窗口显示，交换前后缓冲区
     eglSwapBuffers(display, winSurface);
@@ -122,4 +142,291 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
 
     shader.release();
 
+}
+/**
+ * 画点
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawPoints(JNIEnv *env, jobject thiz, jobject surface) {
+    /******** EGL配置start ********/
+    EGLDisplay display = nullptr;
+    EGLSurface winSurface = nullptr;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+    /******** EGL配置end ******/
+
+    /******** 加载着色器程序 start******/
+    Shader shader(vertexShader, fragmentShader);
+    shader.use();
+    /******** 加载着色器程序 end******/
+
+    /******** 将数据传入图形渲染管线 start******/
+    //定义顶点属性数组
+    static float pointsVer[] = {
+            0.8f, -0.8f, 0.0f,
+            -0.8f, -0.8f, 0.0f,
+            0.0f, 0.8f, 0.0f,
+            0.0f, 0.0f, 0.0f,
+    };
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, pointsVer);
+    glEnableVertexAttribArray(0);
+    /******** 将数据传入图形渲染管线 end******/
+
+    /******** 将图像渲染到屏幕 start******/
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawArrays(GL_POINTS, 0, 4);
+
+    eglSwapBuffers(display, winSurface);
+    /******** 将图像渲染到屏幕 end******/
+
+    shader.release();
+}
+/**
+ * 画线
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawLine(JNIEnv *env, jobject thiz, jobject surface) {
+    /******** EGL配置start ********/
+    EGLDisplay display = nullptr;
+    EGLSurface winSurface = nullptr;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+    /******** EGL配置end ******/
+
+    /******** 加载着色器程序 start******/
+    Shader shader(vertexShader, fragmentShader);
+    shader.use();
+    /******** 加载着色器程序 end******/
+
+    /******** 将数据传入图形渲染管线 start******/
+    //定义顶点属性数组
+    static float lineVer[] = {
+            0.8f, -0.8f, 0.0f,
+            -0.8f, -0.8f, 0.0f,
+            0.0f, 0.8f, 0.0f,
+            0.4f, 0.8f, 0.0f,
+    };
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, lineVer);
+    glEnableVertexAttribArray(0);
+    /******** 将数据传入图形渲染管线 end******/
+
+    /******** 将图像渲染到屏幕 start******/
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    //指定线的宽度
+    glLineWidth(30);
+    glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+    eglSwapBuffers(display, winSurface);
+    /******** 将图像渲染到屏幕 end******/
+
+    shader.release();
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawSquare(JNIEnv *env, jobject thiz, jobject surface) {
+    /******** EGL配置start ********/
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+    /******** EGL配置end ******/
+
+    /******** 加载着色器程序 start******/
+    Shader shader(vertexShader, fragmentShader);
+    shader.use();
+    /******** 加载着色器程序 end******/
+
+    /******** 将数据传入图形渲染管线 start******/
+    //画正方形，但是因为坐标是按照比例系数传的并且手机屏幕是长方形的，会展示成长方形，要用矩阵
+    static float triangleVer[] = {
+            0.8f, 0.8f, 0.0f,
+            0.8f, -0.8f, 0.0f,
+            -0.8f, 0.8f, 0.0f,
+            -0.8f, -0.8f, 0.0f,
+    };
+    int apos = 0;
+
+    glVertexAttribPointer(apos, 3, GL_FLOAT, GL_FALSE, 0, triangleVer);
+    glEnableVertexAttribArray(apos);
+    /******** 将数据传入图形渲染管线 end******/
+
+    /******** 将图像渲染到屏幕 start******/
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    eglSwapBuffers(display, winSurface);
+    /******** 将图像渲染到屏幕 end******/
+
+    shader.release();
+}
+/**
+ * 使用uniform传递单一颜色值
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangleUniform(JNIEnv *env, jobject thiz,
+                                                          jobject surface) {
+    /******** EGL配置start ********/
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+    /******** EGL配置end ******/
+
+    /******** 加载着色器程序 start******/
+    Shader shader(vertexShader, fragmentShaderWithUniform);
+    int program = shader.use();
+    /******** 加载着色器程序 end******/
+
+    /******** 将数据传入图形渲染管线 start******/
+    static float triangleVer[] = {
+            0.8f, -0.8f, 0.0f,
+            -0.8f, -0.8f, 0.0f,
+            0.0f, 0.8f, 0.0f,
+    };
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, triangleVer);
+    glEnableVertexAttribArray(0);
+
+    //传入颜色
+    static float color[] = {
+            //RGBA
+            0.0f, 1.0f, 0.0f, 1.0f
+    };
+    int colorLocation = glGetUniformLocation(program, "uTextColor");
+    //v表示向量vec，基本格式是glUniform + n维向量 + 向量元素数据类型 + v
+    glUniform4fv(colorLocation, 1, color);
+    /******** 将数据传入图形渲染管线 end******/
+
+    /******** 将图像渲染到屏幕 start******/
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 3);
+    eglSwapBuffers(display, winSurface);
+    /******** 将图像渲染到屏幕 end******/
+
+    shader.release();
+}
+/**
+ *  画三角形，传多个颜色值
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithColor(JNIEnv *env, jobject thiz,
+                                                            jobject surface) {
+    /******** EGL配置start ********/
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+    /******** EGL配置end ******/
+
+    /******** 加载着色器程序 start******/
+    Shader shader(vertexShaderWithColor, fragmentShaderWithColor);
+    shader.use();
+    /******** 加载着色器程序 end******/
+
+    /******** 将数据传入图形渲染管线 start******/
+    static float triangleVer[] = {
+            0.8f, -0.8f, 0.0f,  //顶点
+            1.0, 0.0, 0.0,      //颜色
+
+            -0.8f, -0.8f, 0.0f, //顶点
+            0.0, 1.0, 0.0,      //颜色
+
+            0.0f, 0.8f, 0.0f,  //顶点
+            0.0, 0.0, 1.0,      //颜色
+    };
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, triangleVer);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, triangleVer + 3);
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    /******** 将数据传入图形渲染管线 end******/
+
+    /******** 将图像渲染到屏幕 start******/
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 3);
+    eglSwapBuffers(display, winSurface);
+    /******** 将图像渲染到屏幕 end******/
+
+    shader.release();
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithBufferObj(JNIEnv *env, jobject thiz,
+                                                                jobject surface) {
+    EGLDisplay display;
+    EGLSurface winSurface;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+        return;
+    }
+
+    Shader shader(vertexShaderWithColor, fragmentShaderWithColor);
+    shader.use();
+
+    static float triangleVer[] = {
+            0.8f, -0.8f, 0.0f,  //顶点
+            1.0, 0.0, 0.0,      //颜色
+
+            -0.8f, -0.8f, 0.0f, //顶点
+            0.0, 1.0, 0.0,      //颜色
+
+            0.0f, 0.8f, 0.0f,  //顶点
+            0.0, 0.0, 1.0,      //颜色
+    };
+
+    ////CPU先把数组数据传送到GPU的vbo缓冲区
+
+    //定义vbo的id数组，因为可能需要创建多个vbo
+    unsigned int VBOs[1];
+    //创建vbo，将创建好的vbo的id存放到VBOs数组中
+    glGenBuffers(1,VBOs);
+    //绑定vbo缓冲到上下文
+    glBindBuffer(GL_ARRAY_BUFFER,VBOs[0]);
+    //将顶点数据存入到vbo缓冲区
+    //参数target:具体的Buffer Object种类
+    //参数size:传入的数据长度
+    //参数data:具体的数据指针
+    //参数usage:数据的访问模式，常用的是指定修改频率模式，告诉OpenGL我们对数据的修改频率。
+    //访问频率模式有：STREAM(几乎每次访问都被修改)、STATIC(只会修改一次)、DYNAMIC(数据会被多次修改)
+    glBufferData(GL_ARRAY_BUFFER,sizeof(triangleVer),triangleVer,GL_STATIC_DRAW);
+    //指定如何解析顶点属性数组，注意这里最后一个参数传的不是原数组地址，而是在vbo缓冲区中的相对地址
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, (void*)0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, (void*)(3*4));
+    //打开着色器中layout为0的输入变量
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    //清屏
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    //绘制三角形
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 3);
+    //交换前后缓冲区
+    eglSwapBuffers(display, winSurface);
+
+    //解绑VBO
+    glBindBuffer(GL_ARRAY_BUFFER,0);
+    //删除VBO，即清空缓冲区
+    glDeleteBuffers(1,VBOs);
+
+    shader.release();
 }

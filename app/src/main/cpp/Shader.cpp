@@ -39,7 +39,6 @@ GLint Shader::initShader(const char *source, int type) {
         return 0;
     }
 
-    LOGE("glCompileShader %d success", type);
     return sh;
 }
 
@@ -71,7 +70,6 @@ int Shader::use() {
         LOGE("glLinkProgram failed");
         return 0;
     }
-    LOGE("glLinkProgram success");
 
     //使用着色器程序
     glUseProgram(program);
@@ -81,3 +79,4 @@ int Shader::use() {
 void Shader::release() {
     glDeleteProgram(program);
 }
+
