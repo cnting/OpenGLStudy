@@ -1,6 +1,9 @@
 package com.cnting.openglstudy;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.BitmapDrawable;
 import android.opengl.GLSurfaceView;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -15,6 +18,10 @@ import javax.microedition.khronos.opengles.GL10;
  */
 public class YuvPlayer extends GLSurfaceView implements Runnable {
     private int surfaceWidth, surfaceHeight;
+    private Bitmap liyinaiBitmap;
+    private Bitmap liyinaiBitmap1;
+    private Bitmap shiyuanmeiliBitmap;
+    private Bitmap shiyuanmeiliBitmap1;
 
     public YuvPlayer(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -34,6 +41,10 @@ public class YuvPlayer extends GLSurfaceView implements Runnable {
             public void onDrawFrame(GL10 gl) {
             }
         });
+        liyinaiBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.liyingai);
+        liyinaiBitmap1 = BitmapFactory.decodeResource(getResources(), R.drawable.liyingai1);
+        shiyuanmeiliBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.shiyuanmeili);
+        shiyuanmeiliBitmap1 = BitmapFactory.decodeResource(getResources(), R.drawable.shiyuanmeili2);
     }
 
     @Override
@@ -61,8 +72,12 @@ public class YuvPlayer extends GLSurfaceView implements Runnable {
 //        drawTriangleWithVBO(getHolder().getSurface());
 //        drawTriangleWithEBO(getHolder().getSurface());
 //        drawTriangleWithVAO(getHolder().getSurface());
-        drawTriangleWithVAOAndVBOAndEBO(getHolder().getSurface());
+//        drawTriangleWithVAOAndVBOAndEBO(getHolder().getSurface());
 //        drawSquare(getHolder().getSurface());
+
+
+//        drawTexture(shiyuanmeiliBitmap, getHolder().getSurface());
+        drawTextureMixed(liyinaiBitmap1, shiyuanmeiliBitmap1, getHolder().getSurface());
     }
 
 
@@ -115,4 +130,14 @@ public class YuvPlayer extends GLSurfaceView implements Runnable {
      * 画正方形
      */
     private native void drawSquare(Surface surface);
+
+    /**
+     * 绘制纹理
+     */
+    private native void drawTexture(Bitmap bitmap, Surface surface);
+
+    /**
+     * 两个纹理混合
+     */
+    private native void drawTextureMixed(Bitmap bitmap1, Bitmap bitmap2, Surface surface);
 }

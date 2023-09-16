@@ -36,6 +36,8 @@ target_link_libraries( # Specifies the target library.
         # EGL依赖库
         EGL
         android
+        #操作Bitmap库
+        jnigraphics
         # Links the target library to the log library
         # included in the NDK.
         ${log-lib})

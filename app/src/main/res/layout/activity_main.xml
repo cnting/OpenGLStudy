@@ -8,6 +8,7 @@
     tools:context=".MainActivity">
 
     <com.cnting.openglstudy.YuvPlayer
+        android:id="@+id/surfaceView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

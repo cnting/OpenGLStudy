@@ -7,6 +7,7 @@
 #include "FragmentShader.h"
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#include <android/bitmap.h>
 
 /**
  * EGL是OpenGL ES与显示设备的桥梁，让OpenGL ES绘制的内容能够在呈现当前设备上
@@ -20,7 +21,8 @@
  * 另外同一个EGLContext也可以被不同线程共享，但是不能同时被不同线程绑定。
  */
 
-int eglConfig(JNIEnv *env, jobject surface, EGLDisplay *display, EGLSurface *winSurface) {
+int eglConfig(JNIEnv *env, jobject surface, EGLDisplay *display, EGLSurface *winSurface,
+              EGLContext *context) {
     //1.获取原始窗口
     ANativeWindow *nwin = ANativeWindow_fromSurface(env, surface);
     *display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -60,18 +62,24 @@ int eglConfig(JNIEnv *env, jobject surface, EGLDisplay *display, EGLSurface *win
     const EGLint ctxAttr[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
 
     //通过Display和上面获取到的的EGL帧缓存配置列表创建一个EGLContext， EGL_NO_CONTEXT表示不需要多个设备共享上下文
-    EGLContext context = eglCreateContext(*display, eglConfig, EGL_NO_CONTEXT, ctxAttr);
-    if (context == EGL_NO_CONTEXT) {
+    *context = eglCreateContext(*display, eglConfig, EGL_NO_CONTEXT, ctxAttr);
+    if (*context == EGL_NO_CONTEXT) {
         LOGE("eglCreateContext failed");
         return EGL_FALSE;
     }
     //将EGLContext和当前线程以及draw和read的EGLSurface关联，关联后，当前线程就成为了OpenGL es的渲染线程
-    if (EGL_TRUE != eglMakeCurrent(*display, *winSurface, *winSurface, context)) {
+    if (EGL_TRUE != eglMakeCurrent(*display, *winSurface, *winSurface, *context)) {
         LOGE("eglMakeCurrent failed");
         return EGL_FALSE;
     }
 
     return EGL_TRUE;
+}
+
+void release(EGLDisplay display, EGLContext context) {
+    eglDestroyContext(display, context);
+    eglReleaseThread();
+    eglTerminate(display);
 }
 
 /**
@@ -80,10 +88,12 @@ int eglConfig(JNIEnv *env, jobject surface, EGLDisplay *display, EGLSurface *win
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jobject surface) {
+
     /******** EGL配置start ********/
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
     /******** EGL配置end ******/
@@ -136,12 +146,15 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangle(JNIEnv *env, jobject thiz, jo
     int count = sizeof(triangleVer) / sizeof(triangleVer[0]);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, count);
 
+
+
     //绘制指令处理完成，窗口显示，交换前后缓冲区
     eglSwapBuffers(display, winSurface);
     /******** 将图像渲染到屏幕 end******/
 
     shader.release();
 
+    release(&display, &eglContext);
 }
 /**
  * 画点
@@ -152,7 +165,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawPoints(JNIEnv *env, jobject thiz, jobj
     /******** EGL配置start ********/
     EGLDisplay display = nullptr;
     EGLSurface winSurface = nullptr;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
     /******** EGL配置end ******/
@@ -184,6 +198,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawPoints(JNIEnv *env, jobject thiz, jobj
     /******** 将图像渲染到屏幕 end******/
 
     shader.release();
+    release(&display, &eglContext);
 }
 /**
  * 画线
@@ -194,7 +209,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawLine(JNIEnv *env, jobject thiz, jobjec
     /******** EGL配置start ********/
     EGLDisplay display = nullptr;
     EGLSurface winSurface = nullptr;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
     /******** EGL配置end ******/
@@ -228,6 +244,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawLine(JNIEnv *env, jobject thiz, jobjec
     /******** 将图像渲染到屏幕 end******/
 
     shader.release();
+    release(&display, &eglContext);
 }
 extern "C"
 JNIEXPORT void JNICALL
@@ -235,7 +252,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawSquare(JNIEnv *env, jobject thiz, jobj
     /******** EGL配置start ********/
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
     /******** EGL配置end ******/
@@ -268,6 +286,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawSquare(JNIEnv *env, jobject thiz, jobj
     /******** 将图像渲染到屏幕 end******/
 
     shader.release();
+    release(&display, &eglContext);
 }
 /**
  * 使用uniform传递单一颜色值
@@ -279,7 +298,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleUniform(JNIEnv *env, jobject t
     /******** EGL配置start ********/
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
     /******** EGL配置end ******/
@@ -318,6 +338,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleUniform(JNIEnv *env, jobject t
     /******** 将图像渲染到屏幕 end******/
 
     shader.release();
+    release(&display, &eglContext);
 }
 /**
  *  画三角形，传多个颜色值
@@ -329,7 +350,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithColor(JNIEnv *env, jobject
     /******** EGL配置start ********/
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
     /******** EGL配置end ******/
@@ -368,6 +390,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithColor(JNIEnv *env, jobject
     /******** 将图像渲染到屏幕 end******/
 
     shader.release();
+    release(&display, &eglContext);
 }
 /**
  * 使用VBO
@@ -378,7 +401,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVBO(JNIEnv *env, jobject t
                                                           jobject surface) {
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
 
@@ -432,6 +456,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVBO(JNIEnv *env, jobject t
     glDeleteBuffers(1, VBOs);
 
     shader.release();
+    release(&display, &eglContext);
 }
 /**
  * 使用EBO
@@ -442,7 +467,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithEBO(JNIEnv *env, jobject t
                                                           jobject surface) {
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
 
@@ -495,6 +521,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithEBO(JNIEnv *env, jobject t
     glDeleteBuffers(1, &EBO);
 
     shader.release();
+    release(&display, &eglContext);
 }
 /**
  * 使用VAO缓存VBO的顶点状态，画第一个三角形
@@ -505,7 +532,8 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAO(JNIEnv *env, jobject t
                                                           jobject surface) {
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
 
@@ -579,14 +607,20 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAO(JNIEnv *env, jobject t
     glDeleteBuffers(1, VBOs);
     glDeleteVertexArrays(2, VAOs);
     shader.release();
+    release(&display, &eglContext);
 }
+/**
+ * VAO、VBO、EBO综合使用
+ * TODO：显示有问题
+ */
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAOAndVBOAndEBO(JNIEnv *env, jobject thiz,
                                                                       jobject surface) {
     EGLDisplay display;
     EGLSurface winSurface;
-    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface)) {
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
         return;
     }
 
@@ -625,6 +659,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAOAndVBOAndEBO(JNIEnv *en
     glGenBuffers(1, &EBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, vertices);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, vertices + 3);
     glEnableVertexAttribArray(0);
@@ -635,7 +670,7 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAOAndVBOAndEBO(JNIEnv *en
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    //绑定VAO，状态已经被缓存，不用在绑定VBO和EBO
+    //绑定VAO，状态已经被缓存，不用再绑定VBO和EBO
     glBindVertexArray(VAO);
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -643,9 +678,249 @@ Java_com_cnting_openglstudy_YuvPlayer_drawTriangleWithVAOAndVBOAndEBO(JNIEnv *en
     eglSwapBuffers(display, winSurface);
     glBindVertexArray(0);
 
+
     glDeleteBuffers(1, &EBO);
     glDeleteBuffers(1, &VBO);
     glDeleteVertexArrays(1, &VAO);
 
     shader.release();
+    release(&display, &eglContext);
+}
+/**
+ * 纹理
+ * https://juejin.cn/post/7155040552353234951
+ */
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTexture(JNIEnv *env, jobject thiz, jobject bitmap,
+                                                  jobject surface) {
+
+    EGLDisplay display;
+    EGLSurface winSurface;
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
+        return;
+    }
+
+    Shader shader(vertexShaderTexture, fragmentShaderTexture);
+    int program = shader.use();
+
+    float vertices[] = {
+            // 图元顶点坐标         // 纹理坐标
+            0.5f, 0.5f, 0.0f, 1.0f, 1.0f, // top right
+            0.5f, -0.5f, 0.0f, 1.0f, 0.0f, // bottom right
+            -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, // bottom left
+            -0.5f, 0.5f, 0.0f, 0.0f, 1.0f  // top left
+    };
+    unsigned int indices[] = {
+            0, 1, 3, // first triangle
+            1, 2, 3  // second triangle
+    };
+    unsigned int VBO, VAO, EBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    //顶点坐标
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *) 0);
+    glEnableVertexAttribArray(0);
+    //纹理坐标
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+                          (void *) (3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    AndroidBitmapInfo bitmapInfo;
+    if (AndroidBitmap_getInfo(env, bitmap, &bitmapInfo) < 0) {
+        LOGE("AndroidBitmap_getInfo() failed");
+        return;
+    }
+    void *pixels;
+    AndroidBitmap_lockPixels(env, bitmap, &pixels);
+    if (pixels == nullptr) {
+        return;
+    }
+
+    //纹理id
+    unsigned int texture1;
+    //创建纹理
+    glGenTextures(1, &texture1);
+    //绑定纹理
+    glBindTexture(GL_TEXTURE_2D, texture1);
+
+    //采样参数配置 start
+
+    //横坐标环绕配置
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    //纵坐标环绕配置
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    //纹理过滤配置
+    //纹理分辨率大于图元分辨率，即纹理需要被缩小的过滤配置
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    //纹理分辨率小于图元分辨率，即纹理需要被放大的过滤配置
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    //采样参数配置 end
+
+    //图片数据传给纹理对象
+    //level:指mipmap的层级
+    //internalformat:表示纹理存储在GPU中的颜色格式
+    //border:历史遗留的一个参数，传0就好
+    //format:表示传入的纹理像素数据的颜色格式。AndroidBitmap_lockPixels得到的像素数据格式是RGBA
+    //type:传入的纹理像素数据 数组的元素的数据类型。每个像素数据8位，范围0~255，对应格式GL_UNSIGNED_BYTE
+    //data:传入的纹理像素数据的指针
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bitmapInfo.width, bitmapInfo.height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, pixels);
+
+    AndroidBitmap_unlockPixels(env, bitmap);
+
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    eglSwapBuffers(display, winSurface);
+
+    //解绑
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &EBO);
+
+    shader.release();
+    release(&display, &eglContext);
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_cnting_openglstudy_YuvPlayer_drawTextureMixed(JNIEnv *env, jobject thiz, jobject bitmap1,
+                                                       jobject bitmap2, jobject surface) {
+    EGLDisplay display;
+    EGLSurface winSurface;
+    EGLContext eglContext;
+    if (EGL_TRUE != eglConfig(env, surface, &display, &winSurface, &eglContext)) {
+        return;
+    }
+
+    Shader shader(vertexShaderTexture, fragmentShaderTextureMix);
+    int program = shader.use();
+
+    float vertices[] = {
+            // 图元顶点坐标         // 纹理坐标
+            0.8f, 0.4f, 0.0f, 1.0f, 1.0f, // top right
+            0.8f, -0.4f, 0.0f, 1.0f, 0.0f, // bottom right
+            -0.8f, -0.4f, 0.0f, 0.0f, 0.0f, // bottom left
+            -0.8f, 0.4f, 0.0f, 0.0f, 1.0f  // top left
+    };
+    unsigned int indices[] = {
+            0, 1, 3, // first triangle
+            1, 2, 3  // second triangle
+    };
+    unsigned int VBO, VAO, EBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    //顶点坐标
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *) 0);
+    glEnableVertexAttribArray(0);
+    //纹理坐标
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+                          (void *) (3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    AndroidBitmapInfo bitmapInfo1;
+    if (AndroidBitmap_getInfo(env, bitmap1, &bitmapInfo1) < 0) {
+        LOGE("AndroidBitmap_getInfo() bitmap1 failed");
+        return;
+    }
+    void *pixels;
+    AndroidBitmap_lockPixels(env, bitmap1, &pixels);
+    if (pixels == nullptr) {
+        return;
+    }
+    AndroidBitmapInfo bitmapInfo2;
+    if (AndroidBitmap_getInfo(env, bitmap2, &bitmapInfo2) < 0) {
+        LOGE("AndroidBitmap_getInfo() bitmap2 failed");
+        return;
+    }
+    void *pixels2;
+    AndroidBitmap_lockPixels(env, bitmap2, &pixels2);
+    if (pixels2 == nullptr) {
+        return;
+    }
+
+    //-------texture1的配置 start--------------
+    unsigned int texture1;
+    glGenTextures(1, &texture1);
+    glBindTexture(GL_TEXTURE_2D, texture1);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bitmapInfo1.width, bitmapInfo1.height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, pixels);
+
+    AndroidBitmap_unlockPixels(env, bitmap1);
+    //-------texture1的配置 end--------------
+
+    //-------texture2的配置 start--------------
+    unsigned int texture2;
+    glGenTextures(1, &texture2);
+    glBindTexture(GL_TEXTURE_2D, texture2);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, bitmapInfo2.width, bitmapInfo2.height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, pixels2);
+
+    AndroidBitmap_unlockPixels(env, bitmap2);
+    //-------texture1的配置 end--------------
+
+    //对着色器中的纹理变量进行赋值，对ourTexture赋值0，对ourTexture1赋值1
+    glUniform1i(glGetUniformLocation(program, "ourTexture"), 0);
+    glUniform1i(glGetUniformLocation(program, "ourTexture1"), 1);
+
+    //将纹理单元和纹理对象进行绑定。便完成了纹理对象texture1和着色器中的变量ourTexture、纹理对象texture2和着色器中的变量ourTexture1的绑定
+    //激活纹理单元，下面的绑定就会和当前激活的纹理单元关联上
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture1);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture2);
+
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    eglSwapBuffers(display, winSurface);
+
+    //解绑
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &EBO);
+
+    shader.release();
+    release(&display, &eglContext);
 }
